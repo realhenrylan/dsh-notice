@@ -1,0 +1,13 @@
+*.log
+node_modules/
+.dsh-tmp/
+# 调研/离线验证用的一次性工作目录（DSH asar 解包器 + cordis harness），不进版本库
+.tmp-asar/
+
+# 本机开发工作流（Trellis / ZCode / 部署脚本），不入公开仓库
+.trellis/
+.agents/
+.dsh/
+AGENTS.md
+.zcodeignore
+tools/deploy.ps1

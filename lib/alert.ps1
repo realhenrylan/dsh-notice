@@ -7,7 +7,7 @@ param(
   [string]$Sound = '0',
   [string]$SessionId = '',
   [string]$OnlyWhenFullscreen = '0',
-  [string]$Aumid = 'DeepSeekHarness.DesktopNotify'
+  [string]$Aumid = 'DeepSeekHarness.Notify'
 )
 
 # ASCII-only on purpose (PowerShell 5.1 reads UTF-8 scripts as ANSI).

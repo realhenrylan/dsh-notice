@@ -203,7 +203,7 @@ tail -f %USERPROFILE%\.dsh\dsh-desktop-notify.activate.log   # 点击与窗口�
 横幅"成功"但屏幕上没看到的，查通知中心历史（唯一可靠的投递证据）：
 
 ```powershell
-powershell -NoProfile -Command "[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]; [Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('DeepSeekHarness.DesktopNotify').Count"
+powershell -NoProfile -Command "[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]; [Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('DeepSeekHarness.Notify').Count"
 ```
 
 快速确认宿主路由是否活着：
@@ -222,7 +222,7 @@ curl -X POST -H "content-type: application/json" -d "{\"focused\":true}" \
 2. 可选：清掉它运行时创建的东西：
 
 ```
-HKCU\Software\Classes\AppUserModelId\DeepSeekHarness.DesktopNotify
+HKCU\Software\Classes\AppUserModelId\DeepSeekHarness.Notify
 HKCU\Software\Classes\CLSID\{D7A1F0B2-3C4D-4E5F-9A0B-1C2D3E4F5A6B}   （只有用过 channels.toast 才会有）
 ```
 

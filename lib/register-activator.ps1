@@ -1,5 +1,5 @@
 param(
-  [string]$Aumid = 'DeepSeekHarness.DesktopNotify',
+  [string]$Aumid = 'DeepSeekHarness.Notify',
   [string]$Clsid = '{D7A1F0B2-3C4D-4E5F-9A0B-1C2D3E4F5A6B}'
 )
 
@@ -17,14 +17,14 @@ $exe = Join-Path $PSScriptRoot 'dsh-notify-activator.exe'
 if (-not (Test-Path -LiteralPath $exe)) { Write-Output 'activator-exe-missing'; exit 2 }
 
 $clsidKey = "HKCU:\Software\Classes\CLSID\$Clsid"
-New-Item -Path $clsidKey -Force | Out-Null
+if (-not (Test-Path -LiteralPath $clsidKey)) { New-Item -Path $clsidKey -Force | Out-Null }
 New-ItemProperty -Path $clsidKey -Name '(Default)' -Value 'DSH desktop notification activator' -PropertyType String -Force | Out-Null
 $server = Join-Path $clsidKey 'LocalServer32'
-New-Item -Path $server -Force | Out-Null
+if (-not (Test-Path -LiteralPath $server)) { New-Item -Path $server -Force | Out-Null }
 New-ItemProperty -Path $server -Name '(Default)' -Value ('"' + $exe + '"') -PropertyType String -Force | Out-Null
 
 $aumidKey = "HKCU:\Software\Classes\AppUserModelId\$Aumid"
-New-Item -Path $aumidKey -Force | Out-Null
+if (-not (Test-Path -LiteralPath $aumidKey)) { New-Item -Path $aumidKey -Force | Out-Null }
 New-ItemProperty -Path $aumidKey -Name 'DisplayName' -Value 'DeepSeek Harness' -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $aumidKey -Name 'CustomActivator' -Value $Clsid -PropertyType String -Force | Out-Null
 

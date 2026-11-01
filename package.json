@@ -26,6 +26,7 @@
     "lib/dsh-notify-activator.exe",
     "lib/activator/NotifyActivator.cs",
     "lib/activator/DshNotifyProbe.cs",
+    "assets/dsh-logo.png",
     "tools/verify.mjs",
     "cordis.patch.yml",
     "README.md",

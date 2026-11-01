@@ -6,7 +6,7 @@ param(
   [string]$Scenario = '',
   [string]$Urgent = '0',
   [string]$SessionId = '',
-  [string]$Aumid = 'DeepSeekHarness.DesktopNotify',
+  [string]$Aumid = 'DeepSeekHarness.Notify',
   [string]$IconPath = ''
 )
 
@@ -39,14 +39,18 @@ function Register-Aumid {
   param([string]$Id, [string]$Icon)
   try {
     $key = "HKCU:\Software\Classes\AppUserModelId\$Id"
-    New-Item -Path $key -Force | Out-Null
+    # New-Item -Force on an EXISTING key wipes every value in it (verified),
+    # which would erase CustomActivator written by Register-Activation (and
+    # vice versa) - so only create the key when it is missing.
+    if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
     New-ItemProperty -Path $key -Name 'DisplayName' -Value 'DeepSeek Harness' -PropertyType String -Force | Out-Null
+    # Windows' toast header app logo reads IconUri; it must be a proper file:/// URI
+    # (a bare path is silently ignored and the header keeps the generic app icon).
     if (-not [string]::IsNullOrWhiteSpace($Icon) -and (Test-Path -LiteralPath $Icon)) {
-      New-ItemProperty -Path $key -Name 'IconUri' -Value $Icon -PropertyType String -Force | Out-Null
+      $iconUri = [System.Uri]::new((Resolve-Path -LiteralPath $Icon).Path).AbsoluteUri
+      New-ItemProperty -Path $key -Name 'IconUri' -Value $iconUri -PropertyType String -Force | Out-Null
     }
   } catch {
-    # Silent failure once cost us the toast header name: the key existed with only
-    # CustomActivator on it and Windows showed a fallback title. Say it out loud.
     [Console]::Error.WriteLine('aumid register failed: ' + $_.Exception.Message)
   }
 }
@@ -60,13 +64,14 @@ function Register-Activation {
     if (Test-Path -LiteralPath $exe) {
       $clsid = '{D7A1F0B2-3C4D-4E5F-9A0B-1C2D3E4F5A6B}'
       $clsidKey = "HKCU:\Software\Classes\CLSID\$clsid"
-      New-Item -Path $clsidKey -Force | Out-Null
+      if (-not (Test-Path -LiteralPath $clsidKey)) { New-Item -Path $clsidKey -Force | Out-Null }
       New-ItemProperty -Path $clsidKey -Name '(Default)' -Value 'DSH desktop notification activator' -PropertyType String -Force | Out-Null
       $server = Join-Path $clsidKey 'LocalServer32'
-      New-Item -Path $server -Force | Out-Null
+      if (-not (Test-Path -LiteralPath $server)) { New-Item -Path $server -Force | Out-Null }
       New-ItemProperty -Path $server -Name '(Default)' -Value ('"' + $exe + '"') -PropertyType String -Force | Out-Null
     $aumidKey = "HKCU:\Software\Classes\AppUserModelId\$Aumid"
-    New-Item -Path $aumidKey -Force | Out-Null
+    # Same guard as Register-Aumid: New-Item -Force would wipe IconUri.
+    if (-not (Test-Path -LiteralPath $aumidKey)) { New-Item -Path $aumidKey -Force | Out-Null }
     # Belt and braces: this path demonstrably works (CustomActivator survives),
     # so make sure the display name exists even if Register-Aumid ever fails.
     New-ItemProperty -Path $aumidKey -Name 'DisplayName' -Value 'DeepSeek Harness' -PropertyType String -Force | Out-Null
@@ -125,6 +130,20 @@ if ($Sound -eq '1') { Play-Sound $Kind }
 $t = [System.Security.SecurityElement]::Escape($title)
 $b = [System.Security.SecurityElement]::Escape($body)
 
+# toast 左上角的 logo：优先 host 传来的 -IconPath（DSH 安装目录里的
+# resources/icon.png），否则退回插件自带的 assets/dsh-logo.png；都没有就留空，
+# 让 toast 用 AUMID 的默认图标。appLogoOverride 只接受 file:/// 形式的绝对路径。
+$image = ''
+$iconSrc = $IconPath
+if ([string]::IsNullOrWhiteSpace($iconSrc)) {
+  $fallback = Join-Path (Split-Path $PSScriptRoot -Parent) 'assets\dsh-logo.png'
+  if (Test-Path -LiteralPath $fallback) { $iconSrc = $fallback }
+}
+if (-not [string]::IsNullOrWhiteSpace($iconSrc) -and (Test-Path -LiteralPath $iconSrc)) {
+  $uri = [System.Uri]::new((Resolve-Path -LiteralPath $iconSrc).Path).AbsoluteUri
+  $image = '<image placement="appLogoOverride" src="' + [System.Security.SecurityElement]::Escape($uri) + '"/>'
+}
+
 switch ($Scenario) {
   'reminder' { $attrs = ' scenario="reminder" duration="long"' }
   'alarm'    { $attrs = ' scenario="alarm" duration="long"' }
@@ -136,6 +155,7 @@ $rich = @"
 <toast$attrs$activation>
   <visual>
     <binding template="ToastGeneric">
+      $image
       <text>$t</text>
       <text>$b</text>
     </binding>
@@ -148,6 +168,7 @@ $plain = @"
 <toast$activation>
   <visual>
     <binding template="ToastGeneric">
+      $image
       <text>$t</text>
       <text>$b</text>
     </binding>

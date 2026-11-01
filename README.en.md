@@ -211,7 +211,7 @@ If a banner "succeeded" but nothing appeared on screen, check the notification-c
 history (the only reliable delivery evidence):
 
 ```powershell
-powershell -NoProfile -Command "[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]; [Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('DeepSeekHarness.DesktopNotify').Count"
+powershell -NoProfile -Command "[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]; [Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('DeepSeekHarness.Notify').Count"
 ```
 
 Quick check that the host routes are alive:
@@ -231,7 +231,7 @@ running a stale host process, restart it.
 2. Optionally remove what it created while running:
 
 ```
-HKCU\Software\Classes\AppUserModelId\DeepSeekHarness.DesktopNotify
+HKCU\Software\Classes\AppUserModelId\DeepSeekHarness.Notify
 HKCU\Software\Classes\CLSID\{D7A1F0B2-3C4D-4E5F-9A0B-1C2D3E4F5A6B}   (only with channels.toast)
 ```
 

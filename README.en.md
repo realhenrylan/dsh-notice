@@ -61,7 +61,7 @@ instructions to the agent inside DSH and let it install for you.**
 Send this to the agent in DSH and it takes about two minutes:
 
 > Please install the dsh-desktop-notify plugin for me: clone
-> https://github.com/VoodooB0Ys/dsh-desktop-notify into a permanent tools folder;
+> https://github.com/realhenrylan/dsh-notice into a permanent tools folder;
 > edit %USERPROFILE%\.dsh\profiles\desktop\package.json (adjust the profile name if
 > yours differs), add `"dsh-desktop-notify": "link:<clone location>"` (forward
 > slashes) to dependencies and `"dsh-desktop-notify"` to dsh.profile.bundles; then
@@ -74,7 +74,7 @@ Send this to the agent in DSH and it takes about two minutes:
 In DSH: **Settings → Plugins**, install by spec:
 
 ```
-github:VoodooB0Ys/dsh-desktop-notify
+github:realhenrylan/dsh-notice
 ```
 
 ### Option C: manual (option A spelled out)
@@ -84,7 +84,7 @@ github:VoodooB0Ys/dsh-desktop-notify
    if it ever disappears, re-cloning is enough):
 
    ```bash
-   git clone https://github.com/VoodooB0Ys/dsh-desktop-notify D:\tools\dsh-desktop-notify
+   git clone https://github.com/realhenrylan/dsh-notice D:\tools\dsh-desktop-notify
    ```
 
 2. Edit `%USERPROFILE%\.dsh\profiles\<profile>\package.json` (`<profile>` is usually
@@ -286,3 +286,5 @@ findings fed directly into it:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Based on [VoodooB0Ys/dsh-desktop-notify](https://github.com/VoodooB0Ys/dsh-desktop-notify).

@@ -133,9 +133,26 @@ function fakeRes() {
 }
 
 /**
+ * 造一个最小运行时 AgentRegistry：默认每个 session 行都是顶层 agent；
+ * parentOf 里的 child→parent 关系让 isOwnedBy 返回 true。
+ * @param {object[]} rows - session 行。
+ * @param {Record<string, string>} parentOf - 子会话 id → 父 agent id。
+ * @returns {{ get: Function, list: Function, isOwnedBy: Function }} agents 服务。
+ */
+function makeAgents(rows, parentOf = {}) {
+	const agents = new Map(rows.map((row) => [row.id, { id: row.id, session: row }]));
+	return {
+		get: (id) => agents.get(id),
+		list: () => [...agents.values()],
+		isOwnedBy: (id, owner) => parentOf[id] === owner?.id
+	};
+}
+
+/**
  * 建一个装好真实插件的宿主。
  * @param {object} [overrides] - overrides.config 覆盖测试配置；overrides.spawn
- *   换掉 spawn 桩；overrides.sessions 提供会话行。
+ *   换掉 spawn 桩；overrides.sessions 提供会话行；overrides.parentOf 提供
+ *   运行时 ownership；overrides.agents 传 null 可模拟 agents 服务缺失。
  * @returns {{ ctx: object, spawned: object[], routes: Map, post: Function }}
  */
 async function makeHost(overrides = {}) {
@@ -145,6 +162,9 @@ async function makeHost(overrides = {}) {
 	ctx.provide("subprocess", overrides.spawn ?? makeSpawnRecorder(spawned, overrides.exitCodes));
 	ctx.provide("webServer", makeWebServer(routes));
 	ctx.provide("sessions", { list: overrides.sessions ?? [] });
+	if (overrides.agents !== null) {
+		ctx.provide("agents", overrides.agents ?? makeAgents(overrides.sessions ?? [], overrides.parentOf));
+	}
 	ctx.provide("sessionTitle", { get: (session) => ({ title: `标题-${session?.id ?? "?"}` }) });
 	// 配置必须显式传：apply(ctx, config) 的第二参只有这样才到得了
 	const fiber = ctx.plugin(plugin.default ?? plugin, { ...FAST, ...overrides.config });
@@ -389,17 +409,130 @@ async function scenarioRouteGuard() {
 }
 
 async function scenarioSubagentFilter() {
-	console.log("\n[scenario] 子代理过滤");
+	console.log("\n[scenario] 子代理过滤（运行时 ownership）");
+	const parent = rowOf("s-parent");
+	const child = rowOf("s-child", { origin: "subagent", parentSession: "s-parent", delegationDepth: 1 });
 	const host = await makeHost({
 		config: FAST,
-		sessions: [rowOf("s-child", { origin: "subagent" })]
+		sessions: [parent, child],
+		parentOf: { "s-child": "s-parent" }
 	});
 	host.ctx.emit("session/event", { id: "s-child" }, {
 		type: "turn/end",
 		data: { turn: 1, reason: { kind: "completed" } }
 	});
 	await sleep(150);
-	assertSpawns(host.spawned, "toast.ps1", 0, "origin=subagent → 不弹");
+	assertSpawns(host.spawned, "toast.ps1", 0, "live agent 有 owner → 完成不弹");
+	host.ctx.emit("session/event", { id: "s-child" }, {
+		type: "approval/asked",
+		data: { id: "apr-child", toolName: "pwsh" }
+	});
+	host.ctx.emit("session/event", { id: "s-child" }, {
+		type: "tool/call",
+		data: { name: "ask_user_question", arguments: "{\"questions\":[]}" }
+	});
+	await sleep(150);
+	assertSpawns(host.spawned, "toast.ps1", 0, "子代理的授权/提问也不弹");
+
+	const loud = await makeHost({
+		config: { ...FAST, notifySubagents: true },
+		sessions: [parent, child],
+		parentOf: { "s-child": "s-parent" }
+	});
+	loud.ctx.emit("session/event", { id: "s-child" }, {
+		type: "turn/end",
+		data: { turn: 1, reason: { kind: "completed" } }
+	});
+	await sleep(180);
+	assertSpawns(loud.spawned, "toast.ps1", 1, "notifySubagents=true → 子代理完成也弹");
+}
+
+async function scenarioHeaderIsNotRuntimeOwnership() {
+	console.log("\n[scenario] header 不参与运行时判定");
+	// side/fork：有 parentSession、origin 缺失、depth 0；运行时仍是顶层，应提醒。
+	const side = await makeHost({
+		config: FAST,
+		sessions: [rowOf("s-side", { parentSession: "s-other", delegationDepth: 0 })]
+	});
+	side.ctx.emit("session/event", { id: "s-side" }, {
+		type: "turn/end",
+		data: { turn: 1, reason: { kind: "completed" } }
+	});
+	await sleep(180);
+	assertSpawns(side.spawned, "toast.ps1", 1, "side/fork 有 parentSession 但运行时是顶层 → 弹");
+
+	// resumed subagent：header 仍写 origin=subagent，但运行时已注册成顶层，应提醒。
+	const resumed = await makeHost({
+		config: FAST,
+		sessions: [rowOf("s-resumed", { origin: "subagent", parentSession: "s-other", delegationDepth: 1 })]
+	});
+	resumed.ctx.emit("session/event", { id: "s-resumed" }, {
+		type: "turn/end",
+		data: { turn: 1, reason: { kind: "completed" } }
+	});
+	await sleep(180);
+	assertSpawns(resumed.spawned, "toast.ps1", 1, "resumed subagent 变成顶层 → 弹");
+}
+
+async function scenarioUnknownLineageAllows() {
+	console.log("\n[scenario] ownership 信息不足时放行");
+	// live agent 查不到：不能反证是子代理。
+	const missingAgent = await makeHost({
+		config: FAST,
+		sessions: [rowOf("s-missing")],
+		agents: { get: () => undefined, list: () => [], isOwnedBy: () => false }
+	});
+	missingAgent.ctx.emit("session/event", { id: "s-missing" }, {
+		type: "turn/end",
+		data: { turn: 1, reason: { kind: "completed" } }
+	});
+	await sleep(180);
+	assertSpawns(missingAgent.spawned, "toast.ps1", 1, "agent 缺失 → 放行");
+
+	// agents 服务整体缺失：同样不能静默过滤根会话。
+	const noService = await makeHost({ config: FAST, sessions: [rowOf("s-no-agent-service")], agents: null });
+	noService.ctx.emit("session/event", { id: "s-no-agent-service" }, {
+		type: "turn/end",
+		data: { turn: 1, reason: { kind: "completed" } }
+	});
+	await sleep(180);
+	assertSpawns(noService.spawned, "toast.ps1", 1, "agents 服务缺失 → 放行");
+
+	// owner 已经 dispose：子会话变成孤儿，也放行。
+	const orphan = await makeHost({
+		config: FAST,
+		sessions: [rowOf("s-orphan", { origin: "subagent", delegationDepth: 1 })],
+		parentOf: { "s-orphan": "s-gone" }
+	});
+	orphan.ctx.emit("session/event", { id: "s-orphan" }, {
+		type: "turn/end",
+		data: { turn: 1, reason: { kind: "completed" } }
+	});
+	await sleep(180);
+	assertSpawns(orphan.spawned, "toast.ps1", 1, "owner 不在 live list → 放行");
+}
+
+async function scenarioSubagentPolicyOnRoot() {
+	console.log("\n[scenario] 根会话的 subagent 配置事件不误判");
+	const host = await makeHost({ config: FAST, sessions: [rowOf("s-root-policy")] });
+	// DSH 根会话创建时也会写 subagent/model-selection-policy；
+	// 用过子代理的根会话还会写 subagent/catalog。它们只应被忽略，
+	// 不能据此把根会话永久标记成子代理（否则完成提醒会被静默跳过）。
+	host.ctx.emit("session/event", { id: "s-root-policy" }, {
+		type: "subagent/model-selection-policy",
+		data: { mode: "auto" }
+	});
+	host.ctx.emit("session/event", { id: "s-root-policy" }, {
+		type: "subagent/catalog",
+		data: { agents: [] }
+	});
+	host.ctx.emit("session/event", { id: "s-root-policy" }, { type: "turn/start" });
+	host.ctx.emit("session/event", { id: "s-root-policy" }, {
+		type: "turn/end",
+		data: { turn: 1, reason: { kind: "completed" } }
+	});
+	await sleep(180);
+	assertSpawns(host.spawned, "toast.ps1", 1, "根会话发 subagent/* 配置事件后仍弹完成提醒");
 }
 
 async function scenarioApprovalAsked() {
@@ -598,6 +731,9 @@ const scenarios = [
 	scenarioRecheck,
 	scenarioRouteGuard,
 	scenarioSubagentFilter,
+	scenarioSubagentPolicyOnRoot,
+	scenarioHeaderIsNotRuntimeOwnership,
+	scenarioUnknownLineageAllows,
 	scenarioApprovalAsked,
 	scenarioAskUserQuestion,
 	scenarioBlockedFallback,
